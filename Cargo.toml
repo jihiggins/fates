@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "fates",
+    "fates_macro",
+]
