@@ -1,6 +1,6 @@
 [package]
 name = "fates"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["James Higgins <james.isaac.higgins@gmail.com>"]
 edition = "2018"
 license = "MIT"
@@ -9,5 +9,5 @@ description = "weh"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fates_macro = { version = "0.1.1", path = "../fates_macro" }
+fates_macro = { version = "0.1.2", path = "../fates_macro" }
 parking_lot = "0.11.1"
