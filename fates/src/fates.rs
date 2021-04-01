@@ -2,7 +2,7 @@
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-type FateFn<T> = dyn Fn() -> T;
+type FateFn<T> = dyn Fn() -> T + Send + Sync + 'static;
 
 enum Binding<T> {
     Value(T),
@@ -33,7 +33,28 @@ impl<T: Clone> Fate<T> {
         self.cached_result.read().clone()
     }
 
-    fn from_value(value: T) -> Fate<T> {
+    pub fn bind_value(&self, value: T) {
+        {
+            let mut data = self.data.write();
+            data.value = Binding::Value(value);
+        }
+        self.update();
+    }
+
+    pub fn bind_expression(
+        &self,
+        expression: Box<FateFn<T>>,
+        dependencies: Vec<Fate<T>>,
+    ) {
+        {
+            self.set_dependencies(dependencies);
+            let mut data = self.data.write();
+            data.value = Binding::Expression(expression);
+        }
+        self.update();
+    }
+
+    pub fn from_value(value: T) -> Fate<T> {
         Fate {
             cached_result: Arc::new(RwLock::new(value.clone())),
             data: Arc::new(RwLock::new(FateInternal {
@@ -44,7 +65,7 @@ impl<T: Clone> Fate<T> {
         }
     }
 
-    fn from_expression(
+    pub fn from_expression(
         expression: Box<FateFn<T>>,
         dependencies: Vec<Fate<T>>,
     ) -> Fate<T> {
@@ -60,25 +81,8 @@ impl<T: Clone> Fate<T> {
         result
     }
 
-    fn bind_value(&self, value: T) {
-        {
-            let mut data = self.data.write();
-            data.value = Binding::Value(value);
-        }
-        self.update();
-    }
-
-    fn bind_expression(&self, expression: Box<FateFn<T>>, dependencies: Vec<Fate<T>>) {
-        {
-            self.set_dependencies(dependencies);
-            let mut data = self.data.write();
-            data.value = Binding::Expression(expression);
-        }
-        self.update();
-    }
-
     fn update(&self) {
-        let data = self.data.try_write().expect("Circular reference");
+        let data = self.data.write();
         let result = match &data.value {
             Binding::Value(value) => value.clone(),
             Binding::Expression(expression) => expression(),
@@ -137,6 +141,7 @@ impl<T: Clone> Fate<T> {
 mod tests {
     use super::Fate;
     use fates_macro::fate;
+    use std::thread;
 
     #[test]
     fn simple() {
@@ -228,5 +233,31 @@ mod tests {
         assert_eq!(a, a2.get());
         assert_eq!(b, b2.get());
         assert_eq!(c, c2.get());
+    }
+
+    #[test]
+    fn thread_safe_test() {
+        fate! {
+            let a = 0;
+            let b = a * 10;
+        }
+
+        let mut thread_handles = Vec::new();
+        for _i in 1..100 {
+            let a2: Fate<_> = a.clone();
+            let b2: Fate<_> = b.clone();
+            let handle = thread::spawn(move || {
+                for i in 1..100 {
+                    a2.bind_value(i);
+                    let _r = b2.get();
+                    // note: this will not be the correct value because it is still being assigned to randomly, but no exceptions!
+                }
+            });
+            thread_handles.push(handle);
+        }
+
+        for handle in thread_handles {
+            handle.join().unwrap();
+        }
     }
 }
