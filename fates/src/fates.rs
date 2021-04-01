@@ -228,8 +228,7 @@ mod tests {
         let b = a * 5;
         let c = a * b;
 
-        // fate! {a2 = 7;}
-        a2.bind_expression(Box::new(move || 7), vec![]);
+        fate! {a2 = 7;}
         assert_eq!(a, a2.get_value());
         assert_eq!(b, b2.get_value());
         assert_eq!(c, c2.get_value());

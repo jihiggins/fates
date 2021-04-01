@@ -2,25 +2,14 @@
 # It is not intended for manual editing.
 [[package]]
 name = "fates"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "fates_macro 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fates_macro",
 ]
 
 [[package]]
 name = "fates_macro"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "fates_macro"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "006b230843909d9cb740406778847e464aef549851da78464155a449a853a19a"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",

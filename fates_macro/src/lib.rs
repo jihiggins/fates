@@ -1,24 +1,46 @@
 #![allow(unused_imports)]
 extern crate proc_macro;
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use std::any::Any;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::token::Token;
+use syn::{
+    fold::{fold_ident, Fold},
+    visit_mut::{self, VisitMut},
+    ExprLit, Lit,
+};
 use syn::{parse_macro_input, Expr, Ident, Local, Pat, Stmt, Token};
 
-struct Fate {
-    variables: Vec<Ident>,
-    expressions: Vec<proc_macro2::TokenStream>,
-    dependencies: Vec<proc_macro2::TokenStream>,
-    clone_lists: Vec<proc_macro2::TokenStream>,
-}
 const CLONE_NAME: &str = "_clone__fate__";
+const VALUE_NAME: &str = "_value__fate__";
+#[derive(Default)]
+struct CloneFold {
+    pub(crate) clones: String,
+    pub(crate) values: String,
+    pub(crate) dependencies: String,
+}
+impl Fold for CloneFold {
+    fn fold_ident(&mut self, i: Ident) -> Ident {
+        let clone_ident = format_ident!("{}{}", i, CLONE_NAME);
+        let value_ident = format_ident!("{}{}", i, VALUE_NAME);
+
+        self.clones += &format!("let {} = {}.clone(); ", clone_ident, i);
+        self.dependencies += &format!("{}.clone(), ", i);
+        let value_expr_str =
+            &format!("let {} = {}.get_value();", value_ident, clone_ident);
+        if !self.values.contains(value_expr_str) {
+            self.values += value_expr_str;
+        }
+        value_ident
+    }
+}
+
+struct Fate {
+    quotes: Vec<proc_macro2::TokenStream>,
+}
 impl Parse for Fate {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut variables = Vec::<Ident>::new();
-        let mut expressions = Vec::<proc_macro2::TokenStream>::new();
-        let mut dependencies = Vec::<proc_macro2::TokenStream>::new();
-        let mut clone_lists = Vec::<proc_macro2::TokenStream>::new();
+        let mut quotes: Vec<proc_macro2::TokenStream> = Vec::new();
         while !input.is_empty() {
             let is_new = if input.peek(Token![let]) {
                 input.parse::<Token![let]>()?;
@@ -26,75 +48,51 @@ impl Parse for Fate {
             } else {
                 false
             };
-            let ident: Ident = input.parse()?;
+            let fate_ident: Ident = input.parse()?;
             input.parse::<Token![=]>()?;
             let expr = input.parse::<Expr>()?;
             input.parse::<Token![;]>()?;
 
-            let mut expr_str = expr.to_token_stream().to_string();
-            let mut dependency_set = Vec::<Ident>::new();
-            for var in &variables {
-                if expr_str.find(&var.to_string()).is_some() {
-                    dependency_set.push(var.clone());
+            let mut clone_fold = CloneFold::default();
+            let fixed_expr = clone_fold.fold_expr(expr);
+
+            let clones: proc_macro2::TokenStream = clone_fold.clones.parse().unwrap();
+            let dependencies: proc_macro2::TokenStream =
+                clone_fold.dependencies.parse().unwrap();
+            let value_expr: proc_macro2::TokenStream =
+                clone_fold.values.parse().unwrap();
+
+            let binding_quote = if is_new {
+                quote! {
+                    let #fate_ident = Fate::from_expression
                 }
+            } else {
+                quote! {
+                    #fate_ident.bind_expression
+                }
+            };
 
-                expr_str = expr_str.replace(
-                    &var.to_string(),
-                    &format!("{}{}.get_value()", var.to_string(), CLONE_NAME),
-                );
-            }
-
-            let mut dependency_string = String::from("vec![");
-            let mut clones = String::new();
-            for dep in dependency_set {
-                let dep_string = dep.to_string();
-                dependency_string += &dep_string;
-                dependency_string += ".clone(), ";
-
-                //let #cloned_variables = #variables.clone();
-                clones += &format!(
-                    "let {}{} = {}.clone();",
-                    &dep_string, CLONE_NAME, &dep_string
-                );
-            }
-            dependency_string += "]";
-            let expr: proc_macro2::TokenStream = expr_str.parse().unwrap();
-            let dep: proc_macro2::TokenStream = dependency_string.parse().unwrap();
-            let clones: proc_macro2::TokenStream = clones.parse().unwrap();
-
-            variables.push(ident);
-            expressions.push(expr);
-            dependencies.push(dep);
-            clone_lists.push(clones);
+            let quote = quote! {
+                #clones;
+                #binding_quote(
+                    Box::new(move || {#value_expr #fixed_expr}), vec![#dependencies]);
+            };
+            quotes.push(quote);
         }
 
-        Ok(Fate {
-            variables,
-            expressions,
-            dependencies,
-            clone_lists,
-        })
+        Ok(Fate { quotes })
     }
 }
 
 #[proc_macro]
 pub fn fate(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let Fate {
-        variables,
-        expressions,
-        dependencies,
-        clone_lists,
-    } = parse_macro_input!(input as Fate);
+    let Fate { quotes } = parse_macro_input!(input as Fate);
 
     let expanded = quote! {
-        #(
-            #clone_lists;
-            let #variables = Fate::from_expression(
-                Box::new(move || #expressions), #dependencies);
-        )*
+        #(#quotes)*
     };
 
-    // eprintln!("{}", expanded);
+    eprintln!("{}", expanded);
 
     proc_macro::TokenStream::from(expanded)
 }
