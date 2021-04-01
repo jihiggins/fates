@@ -10,3 +10,4 @@ description = "weh"
 
 [dependencies]
 fates_macro = { version = "0.1.1", path = "../fates_macro" }
+parking_lot = "0.11.1"

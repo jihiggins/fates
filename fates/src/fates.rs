@@ -1,6 +1,6 @@
 #![allow(dead_code)]
-use std::cell::RefCell;
-use std::rc::Rc;
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 type FateFn<T> = dyn Fn() -> T;
 
@@ -24,15 +24,19 @@ struct FateInternal<T: Clone> {
 
 #[derive(Default, Clone)]
 pub struct Fate<T: Clone> {
-    cached_result: Rc<RefCell<T>>,
-    data: Rc<RefCell<FateInternal<T>>>,
+    cached_result: Arc<RwLock<T>>,
+    data: Arc<RwLock<FateInternal<T>>>,
 }
 
 impl<T: Clone> Fate<T> {
+    pub fn get(&self) -> T {
+        self.cached_result.read().clone()
+    }
+
     fn from_value(value: T) -> Fate<T> {
         Fate {
-            cached_result: Rc::new(RefCell::new(value.clone())),
-            data: Rc::new(RefCell::new(FateInternal {
+            cached_result: Arc::new(RwLock::new(value.clone())),
+            data: Arc::new(RwLock::new(FateInternal {
                 value: Binding::Value(value),
                 dependencies: vec![],
                 dependents: vec![],
@@ -45,8 +49,8 @@ impl<T: Clone> Fate<T> {
         dependencies: Vec<Fate<T>>,
     ) -> Fate<T> {
         let result = Fate {
-            cached_result: Rc::new(RefCell::new(expression())),
-            data: Rc::new(RefCell::new(FateInternal {
+            cached_result: Arc::new(RwLock::new(expression())),
+            data: Arc::new(RwLock::new(FateInternal {
                 value: Binding::Expression(expression),
                 dependencies: vec![],
                 dependents: vec![],
@@ -56,13 +60,9 @@ impl<T: Clone> Fate<T> {
         result
     }
 
-    pub fn get(&self) -> T {
-        self.cached_result.borrow().clone()
-    }
-
     fn bind_value(&self, value: T) {
         {
-            let mut data = self.data.borrow_mut();
+            let mut data = self.data.write();
             data.value = Binding::Value(value);
         }
         self.update();
@@ -71,21 +71,21 @@ impl<T: Clone> Fate<T> {
     fn bind_expression(&self, expression: Box<FateFn<T>>, dependencies: Vec<Fate<T>>) {
         {
             self.set_dependencies(dependencies);
-            let mut data = self.data.borrow_mut();
+            let mut data = self.data.write();
             data.value = Binding::Expression(expression);
         }
         self.update();
     }
 
     fn update(&self) {
-        let data = self.data.try_borrow_mut().expect("Circular reference");
+        let data = self.data.try_write().expect("Circular reference");
         let result = match &data.value {
             Binding::Value(value) => value.clone(),
             Binding::Expression(expression) => expression(),
         };
 
         {
-            let mut cached_result = self.cached_result.borrow_mut();
+            let mut cached_result = self.cached_result.write();
             *cached_result = result;
         }
 
@@ -96,12 +96,12 @@ impl<T: Clone> Fate<T> {
 
     fn clear_dependencies(&self) {
         self.remove_all_dependencies();
-        let mut data = self.data.borrow_mut();
+        let mut data = self.data.write();
         data.dependencies.clear();
     }
 
     fn remove_all_dependencies(&self) {
-        let data = self.data.borrow();
+        let data = self.data.read();
         for dependency in &data.dependencies {
             dependency.remove_dependent(&self);
         }
@@ -109,7 +109,7 @@ impl<T: Clone> Fate<T> {
 
     fn set_dependencies(&self, dependencies: Vec<Fate<T>>) {
         self.remove_all_dependencies();
-        let mut data = self.data.borrow_mut();
+        let mut data = self.data.write();
         data.dependencies = dependencies;
         for dependency in &data.dependencies {
             dependency.add_dependent(self);
@@ -117,16 +117,16 @@ impl<T: Clone> Fate<T> {
     }
 
     fn add_dependent(&self, dependent: &Fate<T>) {
-        let mut data = self.data.borrow_mut();
+        let mut data = self.data.write();
         data.dependents.push(dependent.clone());
     }
 
     fn remove_dependent(&self, dependent: &Fate<T>) {
-        let mut data = self.data.borrow_mut();
+        let mut data = self.data.write();
         let index = data
             .dependents
             .iter()
-            .position(|dep| dep.data.as_ptr() == dependent.data.as_ptr());
+            .position(|dep| Arc::as_ptr(&dep.data) == Arc::as_ptr(&dependent.data));
         if let Some(index) = index {
             data.dependents.remove(index);
         }
