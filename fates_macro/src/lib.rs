@@ -26,8 +26,7 @@ impl Fold for CloneFold {
 
         self.clones += &format!("let {} = {}.clone(); ", clone_ident, i);
         self.dependencies += &format!("{}.clone(), ", i);
-        let value_expr_str =
-            &format!("let {} = {}.get_value();", value_ident, clone_ident);
+        let value_expr_str = &format!("let {} = {}.get();", value_ident, clone_ident);
         if !self.values.contains(value_expr_str) {
             self.values += value_expr_str;
         }
@@ -92,7 +91,7 @@ pub fn fate(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #(#quotes)*
     };
 
-    eprintln!("{}", expanded);
+    // eprintln!("{}", expanded);
 
     proc_macro::TokenStream::from(expanded)
 }

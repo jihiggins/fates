@@ -56,7 +56,7 @@ impl<T: Clone> Fate<T> {
         result
     }
 
-    fn get_value(&self) -> T {
+    pub fn get(&self) -> T {
         self.cached_result.borrow().clone()
     }
 
@@ -145,12 +145,12 @@ mod tests {
         let a_clone = a.clone();
         let b_clone = b.clone();
         let c = Fate::from_expression(
-            Box::new(move || a_clone.get_value() + b_clone.get_value()),
+            Box::new(move || a_clone.get() + b_clone.get()),
             vec![a.clone(), b.clone()],
         );
-        assert_eq!(c.get_value(), 8);
+        assert_eq!(c.get(), 8);
         b.bind_value(100);
-        assert_eq!(c.get_value(), 103);
+        assert_eq!(c.get(), 103);
     }
 
     #[test]
@@ -160,35 +160,31 @@ mod tests {
         let a_clone = a.clone();
         let b_clone = b.clone();
         let c = Fate::from_expression(
-            Box::new(move || {
-                a_clone.get_value() + b_clone.get_value() * b_clone.get_value()
-            }),
+            Box::new(move || a_clone.get() + b_clone.get() * b_clone.get()),
             vec![a.clone(), b.clone()],
         );
-        assert_eq!(c.get_value(), 10 + 23 * 23);
+        assert_eq!(c.get(), 10 + 23 * 23);
         b.bind_value(113);
-        assert_eq!(c.get_value(), 10 + 113 * 113);
+        assert_eq!(c.get(), 10 + 113 * 113);
 
         let c_clone = c.clone();
         let a_clone = a.clone();
         let d = Fate::from_expression(
-            Box::new(move || c_clone.get_value() * a_clone.get_value()),
+            Box::new(move || c_clone.get() * a_clone.get()),
             vec![c.clone(), a.clone()],
         );
 
-        assert_eq!(d.get_value(), (10 + 113 * 113) * 10);
+        assert_eq!(d.get(), (10 + 113 * 113) * 10);
 
         let a_clone = a.clone();
         let b_clone = b.clone();
         let e = Fate::from_value(2);
         let e_clone = e.clone();
         c.bind_expression(
-            Box::new(move || {
-                a_clone.get_value() * b_clone.get_value() / e_clone.get_value()
-            }),
+            Box::new(move || a_clone.get() * b_clone.get() / e_clone.get()),
             vec![a.clone(), b.clone(), e.clone()],
         );
-        assert_eq!(c.get_value(), 10 * 113 / 2);
+        assert_eq!(c.get(), 10 * 113 / 2);
     }
 
     #[test]
@@ -199,13 +195,13 @@ mod tests {
         let a_clone = a.clone();
         let b_clone = b.clone();
         let c = Fate::from_expression(
-            Box::new(move || a_clone.get_value() + b_clone.get_value()),
+            Box::new(move || a_clone.get() + b_clone.get()),
             vec![a.clone(), b.clone()],
         );
         let a_clone = a.clone();
         let c_clone = c.clone();
         b.bind_expression(
-            Box::new(move || a_clone.get_value() + c_clone.get_value()),
+            Box::new(move || a_clone.get() + c_clone.get()),
             vec![a.clone(), c.clone()],
         );
     }
@@ -220,17 +216,17 @@ mod tests {
             let b2 = a2 * 5;
             let c2 = a2 * b2;
         }
-        assert_eq!(a, a2.get_value());
-        assert_eq!(b, b2.get_value());
-        assert_eq!(c, c2.get_value());
+        assert_eq!(a, a2.get());
+        assert_eq!(b, b2.get());
+        assert_eq!(c, c2.get());
 
         let a = 7;
         let b = a * 5;
         let c = a * b;
 
         fate! {a2 = 7;}
-        assert_eq!(a, a2.get_value());
-        assert_eq!(b, b2.get_value());
-        assert_eq!(c, c2.get_value());
+        assert_eq!(a, a2.get());
+        assert_eq!(b, b2.get());
+        assert_eq!(c, c2.get());
     }
 }
