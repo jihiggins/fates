@@ -192,8 +192,6 @@ mod tests {
         assert_eq!(c.get(), 10 * 113 / 2);
     }
 
-    #[test]
-    #[should_panic(expected = "Circular reference")]
     fn circular_reference() {
         let a = Fate::from_value(3);
         let b = Fate::from_value(5);
