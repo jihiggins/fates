@@ -267,7 +267,7 @@ mod tests {
         let b = 10;
         fate! {
             [a, b]
-            let c = 15;
+            let c = 15; // Comment
             let d = a + b;
             let e = c * d;
         }
@@ -278,5 +278,19 @@ mod tests {
         fate! {[a, b] c = a + b;}
         assert_eq!(c.get(), a + b);
         assert_eq!(e.get(), c.get() * d.get());
+    }
+
+    #[test]
+    fn explicit_fate_test() {
+        struct TestStruct {
+            fate: Fate<i32>,
+        }
+        fate! {
+            let a = 10;
+        }
+        let test_struct = TestStruct { fate: a.clone() };
+        assert_eq!(a.get(), 10);
+        fate! {a = 15;}
+        assert_eq!(test_struct.fate.get(), 15);
     }
 }
