@@ -260,4 +260,23 @@ mod tests {
             handle.join().unwrap();
         }
     }
+
+    #[test]
+    fn value_capture_test() {
+        let a = 5;
+        let b = 10;
+        fate! {
+            [a, b]
+            let c = 15;
+            let d = a + b;
+            let e = c * d;
+        }
+
+        assert_eq!(c.get(), d.get());
+        assert_eq!(e.get(), c.get() * d.get());
+
+        fate! {[a, b] c = a + b;}
+        assert_eq!(c.get(), a + b);
+        assert_eq!(e.get(), c.get() * d.get());
+    }
 }
