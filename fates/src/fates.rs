@@ -246,9 +246,11 @@ mod tests {
             let b2: Fate<_> = b.clone();
             let handle = thread::spawn(move || {
                 for i in 1..100 {
-                    a2.bind_value(i);
+                    let value = 30;
+                    fate! {[i, value] a2 = i + value;}
                     let _r = b2.get();
-                    // note: this will not be the correct value because it is still being assigned to randomly, but no exceptions!
+                    // note: this will not be the correct value because it is still
+                    // being assigned to randomly, but no exceptions!
                 }
             });
             thread_handles.push(handle);
