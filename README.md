@@ -13,7 +13,9 @@ This crate provides the Fate type, which can be used to create thread-safe react
 ### Updating text:
 ```rust
 fate! {
-  [name, hello, goodbye]
+  [name] // Name will be accessed as a Fate value
+    
+  // All assignments in the macro will be treated as Fate types
   let name = "Alex".to_string();
   let hello = "Hello, ".to_string() + &name;
   let goodbye = "Goodbye, ".to_string() + &name;
@@ -21,7 +23,7 @@ fate! {
 assert_eq!(&hello.get(), "Hello, Alex");
 assert_eq!(&goodbye.get(), "Goodbye, Alex");
 
-fate! {[name] name = "Sam".to_string();}
+fate! {name = "Sam".to_string();}
 assert_eq!(&hello.get(), "Hello, Sam");
 assert_eq!(&goodbye.get(), "Goodbye, Sam");
 ```
@@ -31,7 +33,7 @@ assert_eq!(&goodbye.get(), "Goodbye, Sam");
 use fates::{fate, Fate};
 
 fate! {
-  [a, b] // Which types should be Fate types
+  [a] // a is accessed as a Fate type.
   let a = 5;
   let b = a * 3;
 }
@@ -47,19 +49,18 @@ let a = 1;
 let b = 10;
 let c = 15;
 fate! {
-  [d, e] // Fate types
+  [d]
   let d = a + b; // 1 + 10
   let e = d * c; // 11 * 15
 }
 assert_eq!(e.get(), 11 * 15);
-fate! {[d] d = a;}
+fate! {d = a;}
 assert_eq!(e.get(), 15);
 ```
 
 ### Accessing or mutating bound values by reference:
 ```rust
 fate! {
-  [a]
   let a = vec![1, 2, 3];
 }
 assert_eq!(a.get(), vec![1, 2, 3]);
@@ -86,14 +87,13 @@ struct TestStruct {
   fate: Fate<i32>,
 }
 fate! {
-  [a]
   let a = 10;
 }
 
 let test_struct = TestStruct { fate: a.clone() };
 assert_eq!(a.get(), 10);
 
-fate! {[a] a = 15;}
+fate! {a = 15;}
 assert_eq!(test_struct.fate.get(), 15);
 
 // Alternatively:

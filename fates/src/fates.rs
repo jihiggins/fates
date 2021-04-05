@@ -266,7 +266,7 @@ mod tests {
         let b = a * 5;
         let c = a * b;
         fate! {
-            [a2, b2, c2]
+            [a2, b2]
             let a2 = 5;
             let b2 = a2 * 5;
             let c2 = a2 * b2;
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn thread_safe_test() {
         fate! {
-            [a, b]
+            [a]
             let a = 0;
             let b = a * 10;
         }
@@ -300,7 +300,7 @@ mod tests {
             let handle = thread::spawn(move || {
                 for i in 1..100 {
                     let value = 30;
-                    fate! {[a2, b2] a2 = i + value;}
+                    fate! {a2 = i + value;}
                     let _r = b2.get();
                     // note: this will not be the correct value because it is still
                     // being assigned to randomly, but no exceptions!
@@ -319,7 +319,7 @@ mod tests {
         let a = 5;
         let b = 10;
         fate! {
-            [c, d, e]
+            [c, d]
             let c = 15; // Comment
             let d = a + b;
             let e = c * d;
@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(c.get(), d.get());
         assert_eq!(e.get(), c.get() * d.get());
 
-        fate! {[c] c = a + b;}
+        fate! {c = a + b;}
         assert_eq!(c.get(), a + b);
         assert_eq!(e.get(), c.get() * d.get());
     }
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn mix_types_test() {
         fate! {
-            [a,b,c]
+            [a, b]
             let a = "String".to_string();
             let b = 10;
             let c = a + " " + &b.to_string();
@@ -359,7 +359,6 @@ mod tests {
         assert_eq!(&c.get(), "String 10");
 
         fate! {
-            [a,b]
             a = "String2".to_string();
             b = 100;
         }
@@ -370,7 +369,6 @@ mod tests {
     #[test]
     fn ref_test() {
         fate! {
-            [a]
             let a = vec![1, 2, 3];
         }
         assert_eq!(a.get(), vec![1, 2, 3]);
@@ -386,7 +384,7 @@ mod tests {
     #[test]
     fn string_example_test() {
         fate! {
-            [name, hello, goodbye]
+            [name]
             let name = "Alex".to_string();
             let hello = "Hello, ".to_string() + &name;
             let goodbye = "Goodbye, ".to_string() + &name;
@@ -394,7 +392,7 @@ mod tests {
         assert_eq!(&hello.get(), "Hello, Alex");
         assert_eq!(&goodbye.get(), "Goodbye, Alex");
 
-        fate! {[name] name = "Sam".to_string();}
+        fate! {name = "Sam".to_string();}
         assert_eq!(&hello.get(), "Hello, Sam");
         assert_eq!(&goodbye.get(), "Goodbye, Sam");
     }
