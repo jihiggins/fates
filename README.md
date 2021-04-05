@@ -36,7 +36,7 @@ fate! {
   let e = d * c; // 11 * 15
 }
 assert_eq!(e.get(), 11 * 15);
-fate! {[a] d = a;}
+fate! {[d] d = a;}
 assert_eq!(e.get(), 15);
 ```
 
