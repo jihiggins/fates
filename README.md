@@ -10,7 +10,23 @@ This crate provides the Fate type, which can be used to create thread-safe react
 
 ## Examples
 
-Basic usage:
+### Updating text:
+```rust
+fate! {
+  [name, hello, goodbye]
+  let name = "Alex".to_string();
+  let hello = "Hello, ".to_string() + &name;
+  let goodbye = "Goodbye, ".to_string() + &name;
+}
+assert_eq!(&hello.get(), "Hello, Alex");
+assert_eq!(&goodbye.get(), "Goodbye, Alex");
+
+fate! {[name] name = "Sam".to_string();}
+assert_eq!(&hello.get(), "Hello, Sam");
+assert_eq!(&goodbye.get(), "Goodbye, Sam");
+```
+
+### Math expressions:
 ```rust
 use fates::{fate, Fate};
 
@@ -25,7 +41,7 @@ assert_eq!(a.get(), 7);
 assert_eq!(b.get(), 21);
 ```
 
-You can also use Copy types in a fate macro:
+### Copy types:
 ```rust
 let a = 1;
 let b = 10;
@@ -40,7 +56,7 @@ fate! {[d] d = a;}
 assert_eq!(e.get(), 15);
 ```
 
-You can access or mutate bound values by reference:
+### Accessing or mutating bound values by reference:
 ```rust
 fate! {
   [a]
@@ -64,7 +80,7 @@ a.by_ref_mut(|a| {
 });
 ```
 
-If you need to store or manually update a Fate instance:
+### Storing and manually updating a Fate instance:
 ```rust
 struct TestStruct {
   fate: Fate<i32>,
@@ -80,24 +96,9 @@ assert_eq!(a.get(), 10);
 fate! {[a] a = 15;}
 assert_eq!(test_struct.fate.get(), 15);
 
+// Alternatively:
 a.bind_value(200);
 assert_eq!(test_struct.fate.get(), 200);
-```
-
-You can use this to chain together data:
-```rust
-fate! {
-  [name, hello, goodbye]
-  let name = "Alex".to_string();
-  let hello = "Hello, ".to_string() + &name;
-  let goodbye = "Goodbye, ".to_string() + &name;
-}
-assert_eq!(&hello.get(), "Hello, Alex");
-assert_eq!(&goodbye.get(), "Goodbye, Alex");
-
-fate! {[name] name = "Sam".to_string();}
-assert_eq!(&hello.get(), "Hello, Sam");
-assert_eq!(&goodbye.get(), "Goodbye, Sam");
 ```
 
 ## Inspirations
