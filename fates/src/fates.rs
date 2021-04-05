@@ -84,6 +84,29 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
         }
     }
 
+    pub fn by_ref(&self, ref_fn: impl FnOnce(&T)) {
+        let data = self.data.read();
+        if let Binding::Value(value) = &data.value {
+            ref_fn(value);
+        }
+    }
+
+    pub fn by_ref_mut(&self, mut_ref_fn: impl FnOnce(&mut T)) {
+        let mut data = self.data.write();
+        let mut dirtied = false;
+        if let Binding::Value(value) = &mut data.value {
+            mut_ref_fn(value);
+
+            dirtied = true;
+        }
+        if dirtied {
+            self.set_dirty();
+            for dependent in &data.dependents {
+                dependent.set_dirty();
+            }
+        }
+    }
+
     pub fn bind_value(&self, value: T) {
         let mut data = self.data.write();
         data.value = Binding::Value(value);
@@ -342,5 +365,21 @@ mod tests {
         }
 
         assert_eq!(&c.get(), "String2 100");
+    }
+
+    #[test]
+    fn ref_test() {
+        fate! {
+            [a]
+            let a = vec![1, 2, 3];
+        }
+        assert_eq!(a.get(), vec![1, 2, 3]);
+
+        a.by_ref_mut(|a| a.push(4));
+        assert_eq!(a.get(), vec![1, 2, 3, 4]);
+
+        let mut val = 2;
+        a.by_ref(|a| val = a[2]);
+        assert_eq!(val, 3);
     }
 }
