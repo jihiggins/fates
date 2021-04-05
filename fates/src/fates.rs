@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 type FateFn<T> = dyn Fn() -> T + Send + Sync + 'static;
@@ -24,21 +25,35 @@ struct FateInternal<T: Clone> {
 
 #[derive(Default, Clone)]
 pub struct Fate<T: Clone> {
-    cached_result: Arc<RwLock<T>>,
+    cached_value: Arc<RwLock<T>>,
+    dirty: Arc<AtomicBool>,
     data: Arc<RwLock<FateInternal<T>>>,
 }
 
 impl<T: Clone> Fate<T> {
     pub fn get(&self) -> T {
-        self.cached_result.read().clone()
+        if self.is_dirty() {
+            let data = self.data.write();
+            let result = match &data.value {
+                Binding::Value(value) => value.clone(),
+                Binding::Expression(expression) => expression(),
+            };
+            let mut cached_value = self.cached_value.write();
+            *cached_value = result.clone();
+            result
+        } else {
+            self.cached_value.read().clone()
+        }
     }
 
     pub fn bind_value(&self, value: T) {
-        {
-            let mut data = self.data.write();
-            data.value = Binding::Value(value);
+        let mut data = self.data.write();
+        data.value = Binding::Value(value);
+        self.set_dirty();
+
+        for dependent in &data.dependents {
+            dependent.set_dirty();
         }
-        self.update();
     }
 
     pub fn bind_expression(
@@ -46,17 +61,20 @@ impl<T: Clone> Fate<T> {
         expression: Box<FateFn<T>>,
         dependencies: Vec<Fate<T>>,
     ) {
-        {
-            self.set_dependencies(dependencies);
-            let mut data = self.data.write();
-            data.value = Binding::Expression(expression);
+        self.set_dependencies(dependencies);
+        let mut data = self.data.write();
+        data.value = Binding::Expression(expression);
+        self.set_dirty();
+
+        for dependent in &data.dependents {
+            dependent.set_dirty();
         }
-        self.update();
     }
 
     pub fn from_value(value: T) -> Fate<T> {
         Fate {
-            cached_result: Arc::new(RwLock::new(value.clone())),
+            cached_value: Arc::new(RwLock::new(value.clone())),
+            dirty: Arc::new(AtomicBool::new(false)),
             data: Arc::new(RwLock::new(FateInternal {
                 value: Binding::Value(value),
                 dependencies: vec![],
@@ -70,7 +88,8 @@ impl<T: Clone> Fate<T> {
         dependencies: Vec<Fate<T>>,
     ) -> Fate<T> {
         let result = Fate {
-            cached_result: Arc::new(RwLock::new(expression())),
+            cached_value: Arc::new(RwLock::new(expression())),
+            dirty: Arc::new(AtomicBool::new(false)),
             data: Arc::new(RwLock::new(FateInternal {
                 value: Binding::Expression(expression),
                 dependencies: vec![],
@@ -81,21 +100,12 @@ impl<T: Clone> Fate<T> {
         result
     }
 
-    fn update(&self) {
-        let data = self.data.write();
-        let result = match &data.value {
-            Binding::Value(value) => value.clone(),
-            Binding::Expression(expression) => expression(),
-        };
+    fn is_dirty(&self) -> bool {
+        self.dirty.load(Ordering::Acquire)
+    }
 
-        {
-            let mut cached_result = self.cached_result.write();
-            *cached_result = result;
-        }
-
-        for dependent in &data.dependents {
-            dependent.update();
-        }
+    fn set_dirty(&self) {
+        self.dirty.store(true, Ordering::Release);
     }
 
     fn clear_dependencies(&self) {
