@@ -100,7 +100,7 @@ impl<T: Clone> Fate<T> {
         result
     }
 
-    fn is_dirty(&self) -> bool {
+    pub fn is_dirty(&self) -> bool {
         self.dirty.load(Ordering::Acquire)
     }
 
