@@ -13,6 +13,7 @@ Basic usage:
 use fates::{fate, Fate};
 
 fate! {
+  [a, b] // Which types should be Fate types
   let a = 5;
   let b = a * 3;
 }
@@ -22,13 +23,13 @@ assert_eq!(a.get(), 7);
 assert_eq!(b.get(), 21);
 ```
 
-You can also capture Copy types in a fate macro:
+You can also use Copy types in a fate macro:
 ```rust
 let a = 1;
 let b = 10;
 let c = 15;
 fate! {
-  [a, b, c] // Non-Fate types
+  [d, e] // Fate types
   let d = a + b; // 1 + 10
   let e = d * c; // 11 * 15
 }
@@ -43,11 +44,12 @@ struct TestStruct {
   fate: Fate<i32>,
 }
 fate! {
+  [a]
   let a = 10;
 }
 let test_struct = TestStruct { fate: a.clone() };
 assert_eq!(a.get(), 10);
-fate! {a = 15;}
+fate! {[a] a = 15;}
 assert_eq!(test_struct.fate.get(), 15);
 ```
 
