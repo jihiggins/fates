@@ -5,6 +5,14 @@ use std::sync::Arc;
 
 type FateFn<T> = dyn Fn() -> T + Send + Sync + 'static;
 
+pub trait FateTrait: Send + Sync {
+    fn is_dirty(&self) -> bool;
+    fn set_dirty(&self);
+    fn add_dependent(&self, dependent: Box<dyn FateTrait>);
+    fn remove_dependent(&self, dependent: Box<dyn FateTrait>);
+    fn get_id(&self) -> usize;
+}
+
 enum Binding<T> {
     Value(T),
     Expression(Box<FateFn<T>>),
@@ -19,8 +27,8 @@ impl<T: Default> Default for Binding<T> {
 #[derive(Default)]
 struct FateInternal<T: Clone> {
     value: Binding<T>,
-    dependencies: Vec<Fate<T>>,
-    dependents: Vec<Fate<T>>,
+    dependencies: Vec<Box<dyn FateTrait>>,
+    dependents: Vec<Box<dyn FateTrait>>,
 }
 
 #[derive(Default, Clone)]
@@ -30,7 +38,37 @@ pub struct Fate<T: Clone> {
     data: Arc<RwLock<FateInternal<T>>>,
 }
 
-impl<T: Clone> Fate<T> {
+impl<T: 'static + Clone + Send + Sync> FateTrait for Fate<T> {
+    fn is_dirty(&self) -> bool {
+        self.dirty.load(Ordering::Acquire)
+    }
+
+    fn set_dirty(&self) {
+        self.dirty.store(true, Ordering::Release);
+    }
+
+    fn add_dependent(&self, dependent: Box<dyn FateTrait>) {
+        let mut data = self.data.write();
+        data.dependents.push(dependent);
+    }
+
+    fn remove_dependent(&self, dependent: Box<dyn FateTrait>) {
+        let mut data = self.data.write();
+        let index = data
+            .dependents
+            .iter()
+            .position(|dep| dep.get_id() == dependent.get_id());
+        if let Some(index) = index {
+            data.dependents.remove(index);
+        }
+    }
+
+    fn get_id(&self) -> usize {
+        Arc::as_ptr(&self.data) as usize
+    }
+}
+
+impl<T: 'static + Clone + Send + Sync> Fate<T> {
     pub fn get(&self) -> T {
         if self.is_dirty() {
             let data = self.data.write();
@@ -59,7 +97,7 @@ impl<T: Clone> Fate<T> {
     pub fn bind_expression(
         &self,
         expression: Box<FateFn<T>>,
-        dependencies: Vec<Fate<T>>,
+        dependencies: Vec<Box<dyn FateTrait>>,
     ) {
         self.set_dependencies(dependencies);
         let mut data = self.data.write();
@@ -85,7 +123,7 @@ impl<T: Clone> Fate<T> {
 
     pub fn from_expression(
         expression: Box<FateFn<T>>,
-        dependencies: Vec<Fate<T>>,
+        dependencies: Vec<Box<dyn FateTrait>>,
     ) -> Fate<T> {
         let result = Fate {
             cached_value: Arc::new(RwLock::new(expression())),
@@ -100,14 +138,6 @@ impl<T: Clone> Fate<T> {
         result
     }
 
-    pub fn is_dirty(&self) -> bool {
-        self.dirty.load(Ordering::Acquire)
-    }
-
-    fn set_dirty(&self) {
-        self.dirty.store(true, Ordering::Release);
-    }
-
     fn clear_dependencies(&self) {
         self.remove_all_dependencies();
         let mut data = self.data.write();
@@ -117,32 +147,16 @@ impl<T: Clone> Fate<T> {
     fn remove_all_dependencies(&self) {
         let data = self.data.read();
         for dependency in &data.dependencies {
-            dependency.remove_dependent(&self);
+            dependency.remove_dependent(Box::new(self.clone()));
         }
     }
 
-    fn set_dependencies(&self, dependencies: Vec<Fate<T>>) {
+    fn set_dependencies(&self, dependencies: Vec<Box<dyn FateTrait>>) {
         self.remove_all_dependencies();
         let mut data = self.data.write();
         data.dependencies = dependencies;
         for dependency in &data.dependencies {
-            dependency.add_dependent(self);
-        }
-    }
-
-    fn add_dependent(&self, dependent: &Fate<T>) {
-        let mut data = self.data.write();
-        data.dependents.push(dependent.clone());
-    }
-
-    fn remove_dependent(&self, dependent: &Fate<T>) {
-        let mut data = self.data.write();
-        let index = data
-            .dependents
-            .iter()
-            .position(|dep| Arc::as_ptr(&dep.data) == Arc::as_ptr(&dependent.data));
-        if let Some(index) = index {
-            data.dependents.remove(index);
+            dependency.add_dependent(Box::new(self.clone()));
         }
     }
 }
@@ -161,7 +175,7 @@ mod tests {
         let b_clone = b.clone();
         let c = Fate::from_expression(
             Box::new(move || a_clone.get() + b_clone.get()),
-            vec![a.clone(), b.clone()],
+            vec![Box::new(a.clone()), Box::new(b.clone())],
         );
         assert_eq!(c.get(), 8);
         b.bind_value(100);
@@ -176,7 +190,7 @@ mod tests {
         let b_clone = b.clone();
         let c = Fate::from_expression(
             Box::new(move || a_clone.get() + b_clone.get() * b_clone.get()),
-            vec![a.clone(), b.clone()],
+            vec![Box::new(a.clone()), Box::new(b.clone())],
         );
         assert_eq!(c.get(), 10 + 23 * 23);
         b.bind_value(113);
@@ -186,7 +200,7 @@ mod tests {
         let a_clone = a.clone();
         let d = Fate::from_expression(
             Box::new(move || c_clone.get() * a_clone.get()),
-            vec![c.clone(), a.clone()],
+            vec![Box::new(c.clone()), Box::new(a.clone())],
         );
 
         assert_eq!(d.get(), (10 + 113 * 113) * 10);
@@ -197,7 +211,11 @@ mod tests {
         let e_clone = e.clone();
         c.bind_expression(
             Box::new(move || a_clone.get() * b_clone.get() / e_clone.get()),
-            vec![a.clone(), b.clone(), e.clone()],
+            vec![
+                Box::new(a.clone()),
+                Box::new(b.clone()),
+                Box::new(e.clone()),
+            ],
         );
         assert_eq!(c.get(), 10 * 113 / 2);
     }
@@ -209,13 +227,13 @@ mod tests {
         let b_clone = b.clone();
         let c = Fate::from_expression(
             Box::new(move || a_clone.get() + b_clone.get()),
-            vec![a.clone(), b.clone()],
+            vec![Box::new(a.clone()), Box::new(b.clone())],
         );
         let a_clone = a.clone();
         let c_clone = c.clone();
         b.bind_expression(
             Box::new(move || a_clone.get() + c_clone.get()),
-            vec![a.clone(), c.clone()],
+            vec![Box::new(a.clone()), Box::new(c.clone())],
         );
     }
 
@@ -225,6 +243,7 @@ mod tests {
         let b = a * 5;
         let c = a * b;
         fate! {
+            [a2, b2, c2]
             let a2 = 5;
             let b2 = a2 * 5;
             let c2 = a2 * b2;
@@ -246,6 +265,7 @@ mod tests {
     #[test]
     fn thread_safe_test() {
         fate! {
+            [a, b]
             let a = 0;
             let b = a * 10;
         }
@@ -257,7 +277,7 @@ mod tests {
             let handle = thread::spawn(move || {
                 for i in 1..100 {
                     let value = 30;
-                    fate! {[i, value] a2 = i + value;}
+                    fate! {[a2, b2] a2 = i + value;}
                     let _r = b2.get();
                     // note: this will not be the correct value because it is still
                     // being assigned to randomly, but no exceptions!
@@ -276,7 +296,7 @@ mod tests {
         let a = 5;
         let b = 10;
         fate! {
-            [a, b]
+            [c, d, e]
             let c = 15; // Comment
             let d = a + b;
             let e = c * d;
@@ -285,7 +305,7 @@ mod tests {
         assert_eq!(c.get(), d.get());
         assert_eq!(e.get(), c.get() * d.get());
 
-        fate! {[a, b] c = a + b;}
+        fate! {[c] c = a + b;}
         assert_eq!(c.get(), a + b);
         assert_eq!(e.get(), c.get() * d.get());
     }
@@ -302,5 +322,25 @@ mod tests {
         assert_eq!(a.get(), 10);
         fate! {a = 15;}
         assert_eq!(test_struct.fate.get(), 15);
+    }
+
+    #[test]
+    fn mix_types_test() {
+        fate! {
+            [a,b,c]
+            let a = "String".to_string();
+            let b = 10;
+            let c = a + " " + &b.to_string();
+        }
+
+        assert_eq!(&c.get(), "String 10");
+
+        fate! {
+            [a,b]
+            a = "String2".to_string();
+            b = 100;
+        }
+
+        assert_eq!(&c.get(), "String2 100");
     }
 }
