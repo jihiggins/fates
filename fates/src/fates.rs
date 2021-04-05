@@ -382,4 +382,20 @@ mod tests {
         a.by_ref(|a| val = a[2]);
         assert_eq!(val, 3);
     }
+
+    #[test]
+    fn string_example_test() {
+        fate! {
+            [name, hello, goodbye]
+            let name = "Alex".to_string();
+            let hello = "Hello, ".to_string() + &name;
+            let goodbye = "Goodbye, ".to_string() + &name;
+        }
+        assert_eq!(&hello.get(), "Hello, Alex");
+        assert_eq!(&goodbye.get(), "Goodbye, Alex");
+
+        fate! {[name] name = "Sam".to_string();}
+        assert_eq!(&hello.get(), "Hello, Sam");
+        assert_eq!(&goodbye.get(), "Goodbye, Sam");
+    }
 }

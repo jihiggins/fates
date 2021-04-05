@@ -84,6 +84,22 @@ a.bind_value(200);
 assert_eq!(test_struct.fate.get(), 200);
 ```
 
+You can use this to chain together data:
+```rust
+fate! {
+  [name, hello, goodbye]
+  let name = "Alex".to_string();
+  let hello = "Hello, ".to_string() + &name;
+  let goodbye = "Goodbye, ".to_string() + &name;
+}
+assert_eq!(&hello.get(), "Hello, Alex");
+assert_eq!(&goodbye.get(), "Goodbye, Alex");
+
+fate! {[name] name = "Sam".to_string();}
+assert_eq!(&hello.get(), "Hello, Sam");
+assert_eq!(&goodbye.get(), "Goodbye, Sam");
+```
+
 ## Inspirations
 
 - The "destiny operator": https://paulstovell.com/reactive-programming/.
