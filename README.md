@@ -4,7 +4,9 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Crates.io](https://img.shields.io/crates/d/fates.svg)](https://crates.io/crates/fates)
 
-This crate provides the Fate type, which can be used to create threadsafe reactive declarations. Fate instances that depend on other Fate values will automatically update their values when a dependency is altered. The crate also includes a macro for automatically creating and updating Fate instances.
+This crate provides the Fate type, which can be used to create thread-safe reactive declarations. Fate instances that depend on other Fate values will automatically update their values when a dependency is altered. The crate also includes a macro for automatically creating and updating Fate instances.
+
+**Disclaimer:** Extremely alpha, possibly broken, definitely changing.
 
 ## Examples
 
