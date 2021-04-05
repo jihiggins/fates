@@ -1,6 +1,6 @@
 [package]
 name = "fates_macro"
-version = "0.1.4"
+version = "0.1.6"
 authors = ["James Higgins <james.isaac.higgins@gmail.com>"]
 edition = "2018"
 license = "MIT"
