@@ -40,7 +40,31 @@ fate! {[d] d = a;}
 assert_eq!(e.get(), 15);
 ```
 
-Finally, if you need to store a Fate instance:
+You can access or mutate bound values by reference:
+```rust
+fate! {
+  [a]
+  let a = vec![1, 2, 3];
+}
+assert_eq!(a.get(), vec![1, 2, 3]);
+
+a.by_ref_mut(|a| a.push(4));
+assert_eq!(a.get(), vec![1, 2, 3, 4]);
+
+let mut val = 2;
+a.by_ref(|a| val = a[2]);
+assert_eq!(val, 3);
+```
+If an expression is bound, by_ref / by_ref_mut will not run the supplied function. You can check for this:
+```rust
+let mut is_value = false;
+a.by_ref_mut(|a| {
+  is_value = true;
+  a.push(5);
+});
+```
+
+If you need to store or manually update a Fate instance:
 ```rust
 struct TestStruct {
   fate: Fate<i32>,
@@ -49,10 +73,15 @@ fate! {
   [a]
   let a = 10;
 }
+
 let test_struct = TestStruct { fate: a.clone() };
 assert_eq!(a.get(), 10);
+
 fate! {[a] a = 15;}
 assert_eq!(test_struct.fate.get(), 15);
+
+a.bind_value(200);
+assert_eq!(test_struct.fate.get(), 200);
 ```
 
 ## Inspirations
