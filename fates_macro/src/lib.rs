@@ -19,6 +19,7 @@ struct CloneFold<'a> {
     pub(crate) clones: String,
     pub(crate) values: String,
     pub(crate) dependencies: String,
+    pub(crate) has_dependencies: bool,
 }
 impl Fold for CloneFold<'_> {
     fn fold_ident(&mut self, i: Ident) -> Ident {
@@ -28,6 +29,7 @@ impl Fold for CloneFold<'_> {
 
             self.clones += &format!("let {} = {}.clone(); ", clone_ident, i);
             self.dependencies += &format!("Box::new({}.clone()), ", i);
+            self.has_dependencies = true;
             let value_expr_str =
                 &format!("let {} = {}.get();", value_ident, clone_ident);
             if !self.values.contains(value_expr_str) {
@@ -46,6 +48,7 @@ impl<'a> CloneFold<'a> {
             clones: "".to_string(),
             values: "".to_string(),
             dependencies: "".to_string(),
+            has_dependencies: false,
         }
     }
 }
@@ -89,20 +92,35 @@ impl Parse for Fate {
             let value_expr: proc_macro2::TokenStream =
                 clone_fold.values.parse().unwrap();
 
-            let binding_quote = if is_new {
+            let quote = if clone_fold.has_dependencies {
+                let binding_quote = if is_new {
+                    quote! {
+                        let #fate_ident = Fate::from_expression
+                    }
+                } else {
+                    quote! {
+                        #fate_ident.bind_expression
+                    }
+                };
                 quote! {
-                    let #fate_ident = Fate::from_expression
+                    #clones;
+                    #binding_quote(
+                        Box::new(move || {#value_expr #fixed_expr}), vec![#dependencies]);
                 }
             } else {
+                let binding_quote = if is_new {
+                    quote! {
+                        let #fate_ident = Fate::from_value
+                    }
+                } else {
+                    quote! {
+                        #fate_ident.bind_value
+                    }
+                };
                 quote! {
-                    #fate_ident.bind_expression
+                    #clones;
+                    #binding_quote(#value_expr #fixed_expr);
                 }
-            };
-
-            let quote = quote! {
-                #clones;
-                #binding_quote(
-                    Box::new(move || {#value_expr #fixed_expr}), vec![#dependencies]);
             };
             quotes.push(quote);
         }
