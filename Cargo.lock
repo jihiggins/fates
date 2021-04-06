@@ -14,7 +14,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "fates"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fates_macro",
  "parking_lot",
@@ -22,7 +22,7 @@ dependencies = [
 
 [[package]]
 name = "fates_macro"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "proc-macro2",
  "quote",
