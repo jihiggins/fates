@@ -25,8 +25,7 @@ impl<T: Default> Default for Binding<T> {
 }
 
 #[derive(Default)]
-struct FateInternal<T: Clone> {
-    value: Binding<T>,
+struct FateDependencies {
     dependencies: Vec<Box<dyn FateTrait>>,
     dependents: Vec<Box<dyn FateTrait>>,
 }
@@ -35,7 +34,8 @@ struct FateInternal<T: Clone> {
 pub struct Fate<T: Clone> {
     cached_value: Arc<RwLock<T>>,
     dirty: Arc<AtomicBool>,
-    data: Arc<RwLock<FateInternal<T>>>,
+    dependencies: Arc<RwLock<FateDependencies>>,
+    data: Arc<RwLock<Binding<T>>>,
 }
 
 impl<T: 'static + Clone + Send + Sync> FateTrait for Fate<T> {
@@ -45,15 +45,19 @@ impl<T: 'static + Clone + Send + Sync> FateTrait for Fate<T> {
 
     fn set_dirty(&self) {
         self.dirty.store(true, Ordering::Release);
+        let data = self.dependencies.read();
+        for dependent in &data.dependents {
+            dependent.set_dirty();
+        }
     }
 
     fn add_dependent(&self, dependent: Box<dyn FateTrait>) {
-        let mut data = self.data.write();
+        let mut data = self.dependencies.write();
         data.dependents.push(dependent);
     }
 
     fn remove_dependent(&self, dependent: Box<dyn FateTrait>) {
-        let mut data = self.data.write();
+        let mut data = self.dependencies.write();
         let index = data
             .dependents
             .iter()
@@ -64,7 +68,7 @@ impl<T: 'static + Clone + Send + Sync> FateTrait for Fate<T> {
     }
 
     fn get_id(&self) -> usize {
-        Arc::as_ptr(&self.data) as usize
+        Arc::as_ptr(&self.dependencies) as usize
     }
 }
 
@@ -72,7 +76,7 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
     pub fn get(&self) -> T {
         if self.is_dirty() {
             let data = self.data.write();
-            let result = match &data.value {
+            let result = match &*data {
                 Binding::Value(value) => value.clone(),
                 Binding::Expression(expression) => expression(),
             };
@@ -86,35 +90,32 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
 
     pub fn by_ref(&self, ref_fn: impl FnOnce(&T)) {
         let data = self.data.read();
-        if let Binding::Value(value) = &data.value {
+        if let Binding::Value(value) = &*data {
             ref_fn(value);
         }
     }
 
     pub fn by_ref_mut(&self, mut_ref_fn: impl FnOnce(&mut T)) {
-        let mut data = self.data.write();
         let mut dirtied = false;
-        if let Binding::Value(value) = &mut data.value {
-            mut_ref_fn(value);
+        {
+            let mut data = self.data.write();
+            if let Binding::Value(value) = &mut *data {
+                mut_ref_fn(value);
 
-            dirtied = true;
+                dirtied = true;
+            }
         }
         if dirtied {
             self.set_dirty();
-            for dependent in &data.dependents {
-                dependent.set_dirty();
-            }
         }
     }
 
     pub fn bind_value(&self, value: T) {
-        let mut data = self.data.write();
-        data.value = Binding::Value(value);
-        self.set_dirty();
-
-        for dependent in &data.dependents {
-            dependent.set_dirty();
+        {
+            let mut data = self.data.write();
+            *data = Binding::Value(value);
         }
+        self.set_dirty();
     }
 
     pub fn bind_expression(
@@ -123,21 +124,19 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
         dependencies: Vec<Box<dyn FateTrait>>,
     ) {
         self.set_dependencies(dependencies);
-        let mut data = self.data.write();
-        data.value = Binding::Expression(expression);
-        self.set_dirty();
-
-        for dependent in &data.dependents {
-            dependent.set_dirty();
+        {
+            let mut data = self.data.write();
+            *data = Binding::Expression(expression);
         }
+        self.set_dirty();
     }
 
     pub fn from_value(value: T) -> Fate<T> {
         Fate {
             cached_value: Arc::new(RwLock::new(value.clone())),
             dirty: Arc::new(AtomicBool::new(false)),
-            data: Arc::new(RwLock::new(FateInternal {
-                value: Binding::Value(value),
+            data: Arc::new(RwLock::new(Binding::Value(value))),
+            dependencies: Arc::new(RwLock::new(FateDependencies {
                 dependencies: vec![],
                 dependents: vec![],
             })),
@@ -151,8 +150,8 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
         let result = Fate {
             cached_value: Arc::new(RwLock::new(expression())),
             dirty: Arc::new(AtomicBool::new(false)),
-            data: Arc::new(RwLock::new(FateInternal {
-                value: Binding::Expression(expression),
+            data: Arc::new(RwLock::new(Binding::Expression(expression))),
+            dependencies: Arc::new(RwLock::new(FateDependencies {
                 dependencies: vec![],
                 dependents: vec![],
             })),
@@ -163,12 +162,12 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
 
     fn clear_dependencies(&self) {
         self.remove_all_dependencies();
-        let mut data = self.data.write();
+        let mut data = self.dependencies.write();
         data.dependencies.clear();
     }
 
     fn remove_all_dependencies(&self) {
-        let data = self.data.read();
+        let data = self.dependencies.read();
         for dependency in &data.dependencies {
             dependency.remove_dependent(Box::new(self.clone()));
         }
@@ -176,7 +175,7 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
 
     fn set_dependencies(&self, dependencies: Vec<Box<dyn FateTrait>>) {
         self.remove_all_dependencies();
-        let mut data = self.data.write();
+        let mut data = self.dependencies.write();
         data.dependencies = dependencies;
         for dependency in &data.dependencies {
             dependency.add_dependent(Box::new(self.clone()));
@@ -241,6 +240,20 @@ mod tests {
             ],
         );
         assert_eq!(c.get(), 10 * 113 / 2);
+    }
+
+    #[test]
+    fn chain() {
+        fate! {
+            [a, b]
+            let a = "a".to_string();
+            let b = "b".to_string() + &a;
+            let c = "c".to_string() + &b;
+        }
+
+        assert_eq!(c.get(), "cba");
+        a.bind_value("c".to_string());
+        assert_eq!(c.get(), "cbc");
     }
 
     fn circular_reference() {
