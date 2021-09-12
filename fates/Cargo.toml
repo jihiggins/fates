@@ -1,6 +1,6 @@
 [package]
 name = "fates"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["James Higgins <james.isaac.higgins@gmail.com>"]
 edition = "2018"
 license = "MIT"
@@ -10,5 +10,5 @@ categories = ["asynchronous", "concurrency", "gui", "caching"]
 readme = "../README.md"
 
 [dependencies]
-fates_macro = { version = "0.1.8", path = "../fates_macro" }
+fates_macro = { version = "0.1.9", path = "../fates_macro" }
 parking_lot = "0.11"

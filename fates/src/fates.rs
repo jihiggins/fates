@@ -1,7 +1,9 @@
 #![allow(dead_code)]
-use parking_lot::RwLock;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+use parking_lot::RwLock;
 
 type FateFn<T> = dyn Fn() -> T + Send + Sync + 'static;
 
@@ -82,6 +84,7 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
             };
             let mut cached_value = self.cached_value.write();
             *cached_value = result.clone();
+            self.dirty.store(false, Ordering::Release);
             result
         } else {
             self.cached_value.read().clone()
@@ -160,6 +163,39 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
         result
     }
 
+    /// Creates a Fate with the same value that depends on this Fate.
+    /// This can be useful for easily checking when the value has been updated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// fate! {
+    ///     let a = 5;
+    ///     let b = a + 3;
+    /// }
+    /// let child = b.create_dependent_clone();
+    /// assert_eq!(child.get(), 8);
+    /// fate! {
+    ///     a = 10;
+    /// }
+    /// assert_eq!(b.get(), 13);
+    /// assert_eq!(b.is_dirty(), false);
+    /// assert_eq!(child.is_dirty(), true);
+    /// assert_eq!(child.get(), 13);
+    /// assert_eq!(child.is_dirty(), false);
+    /// ```
+    pub fn create_dependent_clone(&self) -> Self {
+        let self_clone = self.clone();
+        let dependent_clone = Fate::from_expression(
+            Box::new(move || {
+                let value = self_clone.get();
+                value
+            }),
+            vec![Box::new(self.clone())],
+        );
+        dependent_clone
+    }
+
     fn clear_dependencies(&self) {
         self.remove_all_dependencies();
         let mut data = self.dependencies.write();
@@ -185,9 +221,12 @@ impl<T: 'static + Clone + Send + Sync> Fate<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::Fate;
-    use fates_macro::fate;
     use std::thread;
+
+    use fates_macro::fate;
+
+    use super::Fate;
+    use crate::FateTrait;
 
     #[test]
     fn simple() {
@@ -408,5 +447,48 @@ mod tests {
         fate! {name = "Sam".to_string();}
         assert_eq!(&hello.get(), "Hello, Sam");
         assert_eq!(&goodbye.get(), "Goodbye, Sam");
+    }
+
+    #[test]
+    fn dependent_child_clone() {
+        fate! {
+            [a]
+            let a = 5;
+            let b = a + 3;
+        }
+        let child = b.create_dependent_clone();
+        assert_eq!(child.get(), 8);
+        fate! {
+            a = 10;
+        }
+        assert_eq!(b.get(), 13);
+        assert_eq!(b.is_dirty(), false);
+        assert_eq!(child.is_dirty(), true);
+        assert_eq!(child.get(), 13);
+        assert_eq!(child.is_dirty(), false);
+    }
+
+    #[test]
+    fn is_value_test() {
+        fate! {
+            [a]
+            let a = 5;
+            let b = a * 5;
+        }
+
+        {
+            let mut is_value = false;
+            a.by_ref_mut(|_a| {
+                is_value = true;
+            });
+            assert_eq!(is_value, true);
+        }
+        {
+            let mut is_value = false;
+            b.by_ref_mut(|_b| {
+                is_value = true;
+            });
+            assert_eq!(is_value, false);
+        }
     }
 }

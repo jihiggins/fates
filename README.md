@@ -74,11 +74,26 @@ assert_eq!(val, 3);
 ```
 If an expression is bound, by_ref / by_ref_mut will not run the supplied function. You can check for this:
 ```rust
-let mut is_value = false;
-a.by_ref_mut(|a| {
-  is_value = true;
-  a.push(5);
-});
+fate! {
+    [a]
+    let a = 5;
+    let b = a * 5;
+}
+
+{
+    let mut is_value = false;
+    a.by_ref_mut(|_a| {
+    is_value = true;
+    });
+    assert_eq!(is_value, true);
+}
+{
+    let mut is_value = false;
+    b.by_ref_mut(|_b| {
+    is_value = true;
+    });
+    assert_eq!(is_value, false);
+}
 ```
 
 ### Storing and manually updating a Fate instance:
@@ -99,6 +114,27 @@ assert_eq!(test_struct.fate.get(), 15);
 // Alternatively:
 a.bind_value(200);
 assert_eq!(test_struct.fate.get(), 200);
+```
+
+### Checking when a value has been updated:
+```rust
+fate! {
+    [a]
+    let a = 5;
+    let b = a + 3;
+}
+let child = b.create_dependent_clone();
+assert_eq!(child.get(), 8);
+fate! {
+    a = 10;
+}
+assert_eq!(b.get(), 13);
+assert_eq!(b.is_dirty(), false);
+// Even though b is no longer dirty, the dependent clone is still dirty.
+// This can be used to do something locally whenever the Fate is updated.
+assert_eq!(child.is_dirty(), true);
+assert_eq!(child.get(), 13);
+assert_eq!(child.is_dirty(), false);
 ```
 
 ## Inspirations
